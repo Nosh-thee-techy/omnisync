@@ -2,7 +2,6 @@ import type { Prisma } from "@/generated/prisma/client";
 import { executeDispatchJob, type DispatchJobInput } from "@/lib/dispatch-executor";
 import { prisma } from "@/lib/prisma";
 import type { IntentType, TaskExecutionResponse } from "@/types/pipeline";
-import { tasks } from "@trigger.dev/sdk/v3";
 import type { dispatchActionItemTask } from "@/trigger/dispatch-action-item";
 import type { researchExaTask } from "@/trigger/research-exa";
 
@@ -49,6 +48,7 @@ export async function dispatchApprovedAction(input: {
 
   if (canUseTriggerDev()) {
     try {
+      const { tasks } = await import("@trigger.dev/sdk/v3");
       const handle =
         input.taskType === "RESEARCH_QUERY"
           ? await tasks.trigger<typeof researchExaTask>("research-exa", payload)

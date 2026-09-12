@@ -12,6 +12,15 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: [
+    "@copilotkit/runtime",
+    "@trigger.dev/sdk",
+    "@prisma/client",
+    "pg",
+  ],
+  turbopack: {
+    root: process.cwd(),
+  },
   async headers() {
     return [
       {

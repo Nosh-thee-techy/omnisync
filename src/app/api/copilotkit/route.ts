@@ -7,24 +7,31 @@ import OpenAI from "openai";
 
 export const dynamic = "force-dynamic";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENROUTER_API_KEY
-    ? "https://openrouter.ai/api/v1"
-    : undefined,
-});
+function getHandler() {
+  const apiKey =
+    process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY ?? "build-placeholder";
 
-const serviceAdapter = new OpenAIAdapter({
-  openai,
-  model: process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini",
-});
+  const openai = new OpenAI({
+    apiKey,
+    baseURL: process.env.OPENROUTER_API_KEY
+      ? "https://openrouter.ai/api/v1"
+      : undefined,
+  });
 
-const runtime = new CopilotRuntime();
+  const serviceAdapter = new OpenAIAdapter({
+    openai,
+    model: process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini",
+  });
 
-const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
-  runtime,
-  serviceAdapter,
-  endpoint: "/api/copilotkit",
-});
+  const runtime = new CopilotRuntime();
 
-export const POST = handleRequest;
+  return copilotRuntimeNextJSAppRouterEndpoint({
+    runtime,
+    serviceAdapter,
+    endpoint: "/api/copilotkit",
+  }).handleRequest;
+}
+
+export async function POST(request: Request) {
+  return getHandler()(request);
+}
