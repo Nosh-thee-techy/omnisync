@@ -3,7 +3,7 @@
 ## Implemented
 
 - Environment variables are excluded by `.gitignore` and documented in `.env.example`.
-- GitHub Actions runs a secret scan on pull requests, `main` pushes, and manual dispatches.
+- GitHub Actions runs a secret scan on pull requests targeting `main` and manual dispatches.
 - The secret scan checks full Git history.
 
 ## Pending application configuration
