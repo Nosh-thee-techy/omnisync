@@ -6,8 +6,8 @@ import type { MeetingStatus } from "@/lib/api/types";
 
 export const dynamic = "force-dynamic";
 
-export function GET(request: NextRequest) {
-  const auth = requireSession(request);
+export async function GET(request: NextRequest) {
+  const auth = await requireSession(request);
   if ("response" in auth) return auth.response;
   const status = request.nextUrl.searchParams.get("status") as MeetingStatus | null;
   const meetings = [...store.meetings.values()]
@@ -17,7 +17,7 @@ export function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = requireSession(request);
+  const auth = await requireSession(request);
   if ("response" in auth) return auth.response;
   const body = await readJson(request);
   if (!body) return fail(400, "INVALID_JSON", "Expected a JSON object.");

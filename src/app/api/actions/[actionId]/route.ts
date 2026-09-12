@@ -8,13 +8,13 @@ export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ actionId: string }> };
 
 export async function GET(request: NextRequest, context: Context) {
-  const auth = requireSession(request); if ("response" in auth) return auth.response;
+  const auth = await requireSession(request); if ("response" in auth) return auth.response;
   const { actionId } = await context.params; const action = store.actions.get(actionId);
   return action ? ok(action) : fail(404, "NOT_FOUND", "Action not found.");
 }
 
 export async function PATCH(request: NextRequest, context: Context) {
-  const auth = requireSession(request); if ("response" in auth) return auth.response;
+  const auth = await requireSession(request); if ("response" in auth) return auth.response;
   const { actionId } = await context.params; const action = store.actions.get(actionId);
   if (!action) return fail(404, "NOT_FOUND", "Action not found.");
   const body = await readJson(request); if (!body) return fail(400, "INVALID_JSON", "Expected a JSON object.");
@@ -30,7 +30,7 @@ export async function PATCH(request: NextRequest, context: Context) {
 }
 
 export async function DELETE(request: NextRequest, context: Context) {
-  const auth = requireSession(request); if ("response" in auth) return auth.response;
+  const auth = await requireSession(request); if ("response" in auth) return auth.response;
   const { actionId } = await context.params;
   return store.actions.delete(actionId) ? ok({ deleted: true, id: actionId }) : fail(404, "NOT_FOUND", "Action not found.");
 }

@@ -10,14 +10,14 @@ type Context = { params: Promise<{ meetingId: string }> };
 const editable = ["title", "startsAt", "endsAt", "agenda", "notes"] as const;
 
 export async function GET(request: NextRequest, context: Context) {
-  const auth = requireSession(request); if ("response" in auth) return auth.response;
+  const auth = await requireSession(request); if ("response" in auth) return auth.response;
   const { meetingId } = await context.params;
   const meeting = store.meetings.get(meetingId);
   return meeting ? ok(meeting) : fail(404, "NOT_FOUND", "Meeting not found.");
 }
 
 export async function PATCH(request: NextRequest, context: Context) {
-  const auth = requireSession(request); if ("response" in auth) return auth.response;
+  const auth = await requireSession(request); if ("response" in auth) return auth.response;
   const { meetingId } = await context.params;
   const meeting = store.meetings.get(meetingId);
   if (!meeting) return fail(404, "NOT_FOUND", "Meeting not found.");
@@ -40,7 +40,7 @@ export async function PATCH(request: NextRequest, context: Context) {
 }
 
 export async function DELETE(request: NextRequest, context: Context) {
-  const auth = requireSession(request); if ("response" in auth) return auth.response;
+  const auth = await requireSession(request); if ("response" in auth) return auth.response;
   const { meetingId } = await context.params;
   if (!store.meetings.delete(meetingId)) return fail(404, "NOT_FOUND", "Meeting not found.");
   for (const action of store.actions.values()) if (action.meetingId === meetingId) { action.meetingId = undefined; action.updatedAt = new Date().toISOString(); }

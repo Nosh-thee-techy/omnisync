@@ -4,6 +4,17 @@ This is OmniPulse, an ambient meeting and action orchestration app. It includes 
 
 The API is stateful only for the running Next.js process. It begins with one scheduled meeting and one open action, is intentionally uncached, and resets after a server restart. Protected endpoints accept either the `omnipulse_mock_session` cookie issued on sign-in or an `Authorization: Bearer <token>` header.
 
+### Auth0 production authentication
+
+Auth0 is supported through the official `@auth0/nextjs-auth0` SDK. Copy [`.env.example`](.env.example) to `.env.local` and supply the Auth0 credentials from a **Regular Web Application** in your tenant. When all four `AUTH0_*` values are present, the gateway automatically switches from mock sessions to Auth0 sessions:
+
+- Sign in at `/auth/login` and sign out at `/auth/logout`.
+- Auth0 auto-mounts the callback and session endpoints beneath `/auth/*` through `src/proxy.ts`.
+- Every protected API handler validates the Auth0 session itself; proxy checks are only the fast routing boundary.
+- Configure Auth0 Allowed Callback URLs and Logout URLs for `http://localhost:3001/auth/callback` (or the port you use) and your deployed URL’s equivalent.
+
+Without the Auth0 environment variables, the documented mock `/api/auth/*` flow remains available exclusively for local UI development. It is automatically disabled once Auth0 is configured.
+
 All responses use one of these shapes:
 
 ```ts
@@ -19,6 +30,7 @@ All responses use one of these shapes:
 | `/api/auth/logout` | POST | Clear the current mock session |
 | `/api/auth/session` | GET | Retrieve the current session |
 | `/api/dashboard` | GET | Upcoming meetings, open actions, counts |
+| `/api/parse-intent` | POST | Parse `{ transcript, meetingId? }` for an immediate UI card; does not create data |
 | `/api/meetings` | GET, POST | List (`?status=`) or create meetings |
 | `/api/meetings/:meetingId` | GET, PATCH, DELETE | Read, edit, or remove a meeting |
 | `/api/meetings/:meetingId/actions` | GET, POST | List or create a meeting’s actions |
@@ -44,6 +56,13 @@ const { data: session } = await response.json();
 Webhook URLs are intentionally exempt from session authentication because they are called by external providers. Instead, configure a per-provider HMAC secret, for example `OMNIPULSE_WEBHOOK_CALENDAR_SECRET`. Send the raw JSON body and an `x-omnipulse-signature: sha256=<hex-hmac>` header. The gateway verifies the signature and routes the acknowledged mock event to meetings or actions.
 
 In development, absent secrets are accepted as `verification: "mock"` so frontend integration has no setup dependency. In production, missing secrets return `503`, and invalid signatures return `401`.
+
+### Audio transcript integration
+
+`useAudioStream.ts` can send debounced blocks as `{ transcript, meetingId? }` to either route:
+
+- `POST /api/parse-intent` is authenticated and returns a deterministic mock intent suitable for an Eng 4 UI card. It never changes the action store.
+- `POST /api/webhooks/transcript` accepts the same payload, verifies its webhook signature when configured, returns the intent, and creates an open action only when the block is recognized as actionable (for example, “I’ll send the brief”).
 
 ## Getting Started
 

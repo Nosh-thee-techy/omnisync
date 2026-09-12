@@ -4,7 +4,7 @@ import { fail, ok } from "@/lib/api/http";
 
 export const dynamic = "force-dynamic";
 
-export function GET(request: NextRequest) {
-  const session = sessionFromRequest(request);
+export async function GET(request: NextRequest) {
+  const session = await sessionFromRequest(request);
   return session ? ok(session) : fail(401, "UNAUTHORIZED", "No active session.");
 }

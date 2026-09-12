@@ -6,8 +6,8 @@ import type { ActionStatus } from "@/lib/api/types";
 
 export const dynamic = "force-dynamic";
 
-export function GET(request: NextRequest) {
-  const auth = requireSession(request); if ("response" in auth) return auth.response;
+export async function GET(request: NextRequest) {
+  const auth = await requireSession(request); if ("response" in auth) return auth.response;
   const status = request.nextUrl.searchParams.get("status") as ActionStatus | null;
   const meetingId = request.nextUrl.searchParams.get("meetingId");
   const actions = [...store.actions.values()].filter((action) => (!status || action.status === status) && (!meetingId || action.meetingId === meetingId));
@@ -15,7 +15,7 @@ export function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = requireSession(request); if ("response" in auth) return auth.response;
+  const auth = await requireSession(request); if ("response" in auth) return auth.response;
   const body = await readJson(request); if (!body) return fail(400, "INVALID_JSON", "Expected a JSON object.");
   const title = stringField(body, "title", true); if (!title) return fail(422, "VALIDATION_ERROR", "An action title is required.", { title: "Required." });
   const meetingId = stringField(body, "meetingId") || undefined;

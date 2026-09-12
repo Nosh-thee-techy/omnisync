@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/api/auth";
 import { fail, noStore, readJson } from "@/lib/api/http";
 import { createSession } from "@/lib/api/store";
+import { isAuth0Configured } from "@/lib/auth0";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  if (isAuth0Configured) {
+    return fail(409, "AUTH0_ENABLED", "Use /auth/login to sign in with Auth0.");
+  }
   const body = await readJson(request);
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   const name = typeof body?.name === "string" ? body.name.trim() : undefined;

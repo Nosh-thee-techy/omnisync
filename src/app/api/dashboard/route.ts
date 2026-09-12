@@ -5,8 +5,8 @@ import { store } from "@/lib/api/store";
 
 export const dynamic = "force-dynamic";
 
-export function GET(request: NextRequest) {
-  const auth = requireSession(request); if ("response" in auth) return auth.response;
+export async function GET(request: NextRequest) {
+  const auth = await requireSession(request); if ("response" in auth) return auth.response;
   const meetings = [...store.meetings.values()]; const actions = [...store.actions.values()];
   return ok({
     upcomingMeetings: meetings.filter((meeting) => meeting.status === "scheduled" || meeting.status === "live").sort((a, b) => a.startsAt.localeCompare(b.startsAt)).slice(0, 5),
