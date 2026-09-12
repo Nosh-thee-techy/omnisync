@@ -7,6 +7,22 @@ import {
   prismaSessionStore,
 } from "@/lib/session-store";
 
+const requiredVariables = [
+  "AUTH0_DOMAIN",
+  "AUTH0_CLIENT_ID",
+  "AUTH0_CLIENT_SECRET",
+  "AUTH0_SECRET",
+] as const;
+
+/**
+ * True only when this deployment has a complete Auth0 application
+ * configuration. The API gateway reports on this so a misconfigured
+ * deployment fails loudly instead of silently accepting mock sessions.
+ */
+export const isAuth0Configured = requiredVariables.every((name) =>
+  Boolean(process.env[name]),
+);
+
 // Reads AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, AUTH0_SECRET and
 // APP_BASE_URL from the environment. The SDK mounts its routes under /auth/*
 // via the proxy — there are no route handlers to write.
@@ -16,9 +32,6 @@ export const auth0 = new Auth0Client({
     scope: "openid profile email",
   },
 
-  // Stateful sessions: the cookie carries only an id, the payload lives in
-  // Postgres. That makes sessions revocable server-side and survives the 4KB
-  // cookie ceiling once tokens grow.
   // Failed logins land back on our own page with a readable message instead of
   // Auth0's raw error screen.
   async onCallback(error, context) {
@@ -36,6 +49,9 @@ export const auth0 = new Auth0Client({
     return NextResponse.redirect(new URL(context.returnTo || "/", appBaseUrl));
   },
 
+  // Stateful sessions: the cookie carries only an id, the payload lives in
+  // Postgres. That makes sessions revocable server-side and survives the 4KB
+  // cookie ceiling once tokens grow.
   sessionStore: prismaSessionStore,
   session: {
     rolling: true,
