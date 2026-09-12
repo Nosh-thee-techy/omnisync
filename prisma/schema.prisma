@@ -1,0 +1,231 @@
+// OmniSync — cross-border meeting intelligence
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity — mirrored from Auth0, plus server-side session storage
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  /// Auth0 `sub` claim, e.g. "auth0|68c3..." — the join key to the IdP
+  auth0Sub      String    @unique
+  email         String?   @unique
+  emailVerified Boolean   @default(false)
+  name          String?
+  nickname      String?
+  picture       String?
+  /// Preferred language for translated output, BCP-47
+  locale        String    @default("en-US")
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions     Session[]
+  participants Participant[]
+}
+
+model Session {
+  /// The SDK's session id — this is what the browser cookie carries
+  id        String   @id
+  userId    String?
+  /// Denormalised so a logout token can find rows before the user is loaded
+  auth0Sub  String
+  /// Auth0 `sid` claim, used by back-channel logout
+  sid       String?
+  /// AES-256-GCM ciphertext of the full SessionData (it holds OAuth tokens)
+  data      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([auth0Sub])
+  @@index([sid])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Meetings
+// ---------------------------------------------------------------------------
+
+enum MeetingPlatform {
+  ZOOM
+  GOOGLE_MEET
+  MS_TEAMS
+  OTHER
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+  FAILED
+}
+
+model Meeting {
+  id            String          @id @default(cuid())
+  title         String
+  platform      MeetingPlatform @default(OTHER)
+  status        MeetingStatus   @default(SCHEDULED)
+  externalId    String?         @unique // conference id from Zoom/Meet/Teams
+  joinUrl       String?
+  /// BCP-47 tag the room defaults to, e.g. "en-US"
+  primaryLocale String          @default("en-US")
+  startedAt     DateTime?
+  endedAt       DateTime?
+  summary       String?
+  /// Free-text agenda from the /api/meetings contract
+  agenda        String?
+  /// Free-text notes from the /api/meetings contract
+  notes         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  participants Participant[]
+  segments     TranscriptSegment[]
+  actionItems  ActionItem[]
+
+  @@index([status, startedAt])
+}
+
+model Participant {
+  id          String    @id @default(cuid())
+  meetingId   String
+  /// Set when the attendee matches a signed-in account; null for guests
+  userId      String?
+  displayName String
+  email       String?
+  /// Preferred language for translated output, BCP-47
+  locale      String    @default("en-US")
+  isHost      Boolean   @default(false)
+  joinedAt    DateTime?
+  leftAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  meeting      Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user         User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  segments     TranscriptSegment[]
+  ownedActions ActionItem[]        @relation("ActionOwner")
+
+  @@unique([meetingId, email])
+  @@index([meetingId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Live transcription
+// ---------------------------------------------------------------------------
+
+model TranscriptSegment {
+  id             String   @id @default(cuid())
+  meetingId      String
+  speakerId      String?
+  /// Raw text as spoken, in the detected language
+  text           String
+  /// Detected language of `text`, BCP-47
+  detectedLocale String?
+  /// English (or meeting primaryLocale) rendering produced by the fast tier
+  translation    String?
+  /// Offset from meeting start, in milliseconds
+  startMs        Int
+  endMs          Int
+  confidence     Float?
+  createdAt      DateTime @default(now())
+
+  meeting Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  speaker Participant? @relation(fields: [speakerId], references: [id], onDelete: SetNull)
+
+  @@index([meetingId, startMs])
+}
+
+// ---------------------------------------------------------------------------
+// Action items surfaced as CopilotKit cards
+// ---------------------------------------------------------------------------
+
+enum ActionItemStatus {
+  PROPOSED // rendered as a card, awaiting a human
+  APPROVED
+  REJECTED
+  DISPATCHED // handed to Trigger.dev
+  COMPLETED
+}
+
+enum ActionItemKind {
+  TASK
+  EMAIL
+  RESEARCH
+  ISSUE
+  DECISION
+}
+
+model ActionItem {
+  id          String           @id @default(cuid())
+  meetingId   String?
+  ownerId     String?
+  /// Free-text owner from the /api/actions contract, when the owner is not a
+  /// Participant on the call
+  ownerName   String?
+  kind        ActionItemKind   @default(TASK)
+  status      ActionItemStatus @default(PROPOSED)
+  title       String
+  description String?
+  dueAt       DateTime?
+  /// Segment ids / quotes the reasoning tier based this on
+  sourceQuote String?
+  /// Pre-filled card payload the UI renders and the user may edit
+  payload     Json?
+  approvedAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  meeting Meeting?      @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+  owner   Participant?  @relation("ActionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  jobs    FollowUpJob[]
+
+  @@index([meetingId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Post-meeting async execution
+// ---------------------------------------------------------------------------
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model FollowUpJob {
+  id           String    @id @default(cuid())
+  actionItemId String
+  /// Trigger.dev task identifier, e.g. "dispatch-email"
+  taskSlug     String
+  /// Trigger.dev run id, once enqueued
+  runId        String?   @unique
+  status       JobStatus @default(QUEUED)
+  input        Json?
+  output       Json?
+  error        String?
+  attempts     Int       @default(0)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  actionItem ActionItem @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}

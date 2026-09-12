@@ -4,7 +4,7 @@ import {
   extractTranscriptEvent,
   processTranscriptBlock,
 } from "@/lib/intent-bridge";
-import { store } from "@/lib/api/store";
+import { meetingExists } from "@/lib/api/store";
 import {
   validSignature,
   webhookRoute,
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest, context: Context) {
       );
     }
 
-    if (meetingId && !store.meetings.has(meetingId)) {
+    if (meetingId && !(await meetingExists(meetingId))) {
       return fail(422, "VALIDATION_ERROR", "The meeting does not exist.", {
         meetingId: "Unknown meeting.",
       });

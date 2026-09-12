@@ -1,4 +1,4 @@
-import { makeAction, store } from "@/lib/api/store";
+import { createAction } from "@/lib/api/store";
 import type { ActionItem } from "@/lib/api/types";
 import { parseIntentFromTranscript } from "@/lib/intent-parser";
 import type { IntentPayload, PriorityLevel } from "@/types/pipeline";
@@ -32,10 +32,10 @@ export function extractTranscriptEvent(event: unknown): {
   return { transcript, meetingId };
 }
 
-export function intentToAction(
+export async function intentToAction(
   intent: IntentPayload,
   meetingId?: string,
-): ActionItem | null {
+): Promise<ActionItem | null> {
   if (intent.intent === "NONE") {
     return null;
   }
@@ -45,7 +45,7 @@ export function intentToAction(
     return null;
   }
 
-  const action = makeAction({
+  const action = await createAction({
     meetingId,
     title,
     description:
@@ -59,7 +59,6 @@ export function intentToAction(
     status: "open",
   });
 
-  store.actions.set(action.id, action);
   return action;
 }
 
@@ -74,7 +73,7 @@ export async function processTranscriptBlock(
     intent.intent === "RESEARCH_QUERY";
 
   const action = shouldCreateAction
-    ? (intentToAction(intent, meetingId) ?? undefined)
+    ? ((await intentToAction(intent, meetingId)) ?? undefined)
     : undefined;
 
   return { intent, action };
