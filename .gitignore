@@ -40,3 +40,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+
+!.env.example
+
+# Generated Playwright artifacts
+/playwright-report/
+/test-results/
+/blob-report/
