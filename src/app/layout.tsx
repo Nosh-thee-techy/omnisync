@@ -22,8 +22,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OmniSync",
-  description: "Cross-border meeting intelligence",
+  title: "OmniSync | Meetings, in sync",
+  description: "Turn meeting conversation into action.",
 };
 
 export default async function RootLayout({
