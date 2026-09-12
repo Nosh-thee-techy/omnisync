@@ -7,11 +7,15 @@ import { AuthLayout } from "@/components/auth/auth-layout";
 import { auth0 } from "@/lib/auth0";
 import { safeReturnTo } from "@/lib/return-to";
 
+type LoginPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
 export const metadata = { title: "Log in · OmniSync" };
 
 export default async function LoginPage({
   searchParams,
-}: PageProps<"/login">) {
+}: LoginPageProps) {
   const params = await searchParams;
   const returnTo = safeReturnTo(params.returnTo);
 

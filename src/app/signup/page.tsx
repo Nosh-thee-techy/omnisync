@@ -7,11 +7,15 @@ import { AuthLayout } from "@/components/auth/auth-layout";
 import { auth0 } from "@/lib/auth0";
 import { safeReturnTo } from "@/lib/return-to";
 
+type SignupPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
 export const metadata = { title: "Sign up · OmniSync" };
 
 export default async function SignupPage({
   searchParams,
-}: PageProps<"/signup">) {
+}: SignupPageProps) {
   const params = await searchParams;
   const returnTo = safeReturnTo(params.returnTo);
 
