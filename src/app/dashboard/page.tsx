@@ -9,7 +9,7 @@ export default async function DashboardPage() {
   const session = await auth0.getSession();
 
   if (!session) {
-    redirect("/auth/login?returnTo=/dashboard");
+    redirect("/login?returnTo=/dashboard");
   }
 
   // The row mirrored from Auth0 when this session was first written.

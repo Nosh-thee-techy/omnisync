@@ -16,7 +16,7 @@ export function AuthStatus() {
   if (!user) {
     return (
       <a
-        href="/auth/login"
+        href="/login"
         className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:opacity-90"
       >
         Log in
