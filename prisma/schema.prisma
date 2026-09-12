@@ -11,6 +11,51 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
+// Identity — mirrored from Auth0, plus server-side session storage
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  /// Auth0 `sub` claim, e.g. "auth0|68c3..." — the join key to the IdP
+  auth0Sub      String    @unique
+  email         String?   @unique
+  emailVerified Boolean   @default(false)
+  name          String?
+  nickname      String?
+  picture       String?
+  /// Preferred language for translated output, BCP-47
+  locale        String    @default("en-US")
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions     Session[]
+  participants Participant[]
+}
+
+model Session {
+  /// The SDK's session id — this is what the browser cookie carries
+  id        String   @id
+  userId    String?
+  /// Denormalised so a logout token can find rows before the user is loaded
+  auth0Sub  String
+  /// Auth0 `sid` claim, used by back-channel logout
+  sid       String?
+  /// AES-256-GCM ciphertext of the full SessionData (it holds OAuth tokens)
+  data      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([auth0Sub])
+  @@index([sid])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
 // Meetings
 // ---------------------------------------------------------------------------
 
@@ -53,6 +98,8 @@ model Meeting {
 model Participant {
   id          String    @id @default(cuid())
   meetingId   String
+  /// Set when the attendee matches a signed-in account; null for guests
+  userId      String?
   displayName String
   email       String?
   /// Preferred language for translated output, BCP-47
@@ -63,11 +110,13 @@ model Participant {
   createdAt   DateTime  @default(now())
 
   meeting      Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user         User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   segments     TranscriptSegment[]
   ownedActions ActionItem[]        @relation("ActionOwner")
 
   @@unique([meetingId, email])
   @@index([meetingId])
+  @@index([userId])
 }
 
 // ---------------------------------------------------------------------------
