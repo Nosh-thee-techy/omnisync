@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   if (isAuth0Configured) {
-    return fail(409, "AUTH0_ENABLED", "Use /auth/login to sign in with Auth0.");
+    return fail(409, "AUTH0_ENABLED", "Use /login to sign in with Auth0.");
   }
   const body = await readJson(request);
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";

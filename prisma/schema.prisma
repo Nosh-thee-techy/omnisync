@@ -70,6 +70,7 @@ enum MeetingStatus {
   SCHEDULED
   LIVE
   ENDED
+  CANCELLED
   FAILED
 }
 
@@ -85,6 +86,10 @@ model Meeting {
   startedAt     DateTime?
   endedAt       DateTime?
   summary       String?
+  /// Free-text agenda from the /api/meetings contract
+  agenda        String?
+  /// Free-text notes from the /api/meetings contract
+  notes         String?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -167,8 +172,11 @@ enum ActionItemKind {
 
 model ActionItem {
   id          String           @id @default(cuid())
-  meetingId   String
+  meetingId   String?
   ownerId     String?
+  /// Free-text owner from the /api/actions contract, when the owner is not a
+  /// Participant on the call
+  ownerName   String?
   kind        ActionItemKind   @default(TASK)
   status      ActionItemStatus @default(PROPOSED)
   title       String
@@ -182,7 +190,7 @@ model ActionItem {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  meeting Meeting       @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  meeting Meeting?      @relation(fields: [meetingId], references: [id], onDelete: SetNull)
   owner   Participant?  @relation("ActionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   jobs    FollowUpJob[]
 
