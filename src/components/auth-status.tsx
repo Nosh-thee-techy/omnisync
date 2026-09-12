@@ -27,7 +27,7 @@ export function AuthStatus() {
   return (
     <div className="flex items-center gap-3 text-sm">
       <span className="text-muted-foreground">{user.email ?? user.name}</span>
-      <a href="/dashboard" className="font-medium hover:underline">
+      <a href="/app" className="font-medium hover:underline">
         Dashboard
       </a>
       <a

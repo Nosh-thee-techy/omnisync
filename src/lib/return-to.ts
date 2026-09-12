@@ -1,4 +1,4 @@
-const DEFAULT_RETURN_TO = "/dashboard";
+const DEFAULT_RETURN_TO = "/app";
 
 /**
  * `returnTo` arrives from the query string and ends up in a redirect, so it has
