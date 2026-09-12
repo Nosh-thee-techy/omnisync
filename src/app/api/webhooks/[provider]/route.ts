@@ -1,8 +1,16 @@
 import { NextRequest } from "next/server";
 import { fail, ok } from "@/lib/api/http";
-import { validSignature, webhookRoute, webhookSecret, type WebhookProvider } from "@/lib/api/webhooks";
-import { parseIntent } from "@/lib/api/intent";
-import { makeAction, store } from "@/lib/api/store";
+import {
+  extractTranscriptEvent,
+  processTranscriptBlock,
+} from "@/lib/intent-bridge";
+import { store } from "@/lib/api/store";
+import {
+  validSignature,
+  webhookRoute,
+  webhookSecret,
+  type WebhookProvider,
+} from "@/lib/api/webhooks";
 
 export const dynamic = "force-dynamic";
 
@@ -30,32 +38,58 @@ export async function POST(request: NextRequest, context: Context) {
     return fail(503, "WEBHOOK_NOT_CONFIGURED", `No secret is configured for the ${provider} webhook.`);
   }
 
-  const payload = event !== null && typeof event === "object" && !Array.isArray(event)
-    ? event as Record<string, unknown>
-    : {};
-  const transcript = typeof payload.transcript === "string" ? payload.transcript.trim() : typeof payload.text === "string" ? payload.text.trim() : "";
-  const meetingId = typeof payload.meetingId === "string" ? payload.meetingId : undefined;
-  if (provider === "transcript" && !transcript) {
-    return fail(422, "VALIDATION_ERROR", "Transcript webhooks require a transcript or text field.", { transcript: "Provide a non-empty transcript string." });
-  }
-  if (meetingId && !store.meetings.has(meetingId)) {
-    return fail(422, "VALIDATION_ERROR", "The meeting does not exist.", { meetingId: "Unknown meeting." });
+  const receiptId = `evt_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
+
+  if (provider === "transcript") {
+    const { transcript, meetingId } = extractTranscriptEvent(event);
+
+    if (!transcript?.trim()) {
+      return fail(
+        422,
+        "VALIDATION_ERROR",
+        "Transcript webhook events must include a transcript or text field.",
+        { transcript: "Provide a non-empty transcript string." },
+      );
+    }
+
+    if (meetingId && !store.meetings.has(meetingId)) {
+      return fail(422, "VALIDATION_ERROR", "The meeting does not exist.", {
+        meetingId: "Unknown meeting.",
+      });
+    }
+
+    try {
+      const result = await processTranscriptBlock(transcript.trim(), meetingId);
+
+      return ok(
+        {
+          accepted: true,
+          receiptId,
+          provider,
+          destination,
+          verification: secret ? "verified" : "mock",
+          intent: result.intent,
+          action: result.action,
+        },
+        { status: 202 },
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Intent parsing failed";
+
+      return fail(502, "INTENT_PARSE_FAILED", message);
+    }
   }
 
-  const intent = provider === "transcript" ? parseIntent(transcript) : undefined;
-  const action = intent?.action
-    ? makeAction({ meetingId, title: intent.action.title, owner: intent.action.owner, dueAt: intent.action.dueAt, status: "open" })
-    : undefined;
-  if (action) store.actions.set(action.id, action);
-
-  return ok({
-    accepted: true,
-    receiptId: `evt_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`,
-    provider,
-    destination,
-    verification: secret ? "verified" : "mock",
-    event,
-    ...(intent ? { intent } : {}),
-    ...(action ? { action } : {}),
-  }, { status: 202 });
+  return ok(
+    {
+      accepted: true,
+      receiptId,
+      provider,
+      destination,
+      verification: secret ? "verified" : "mock",
+      event,
+    },
+    { status: 202 },
+  );
 }
