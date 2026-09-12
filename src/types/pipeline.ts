@@ -29,6 +29,7 @@ export interface TaskExecutionResponse {
   runId: string;
   status: JobStatus;
   executedAt: string;
+  output?: Record<string, unknown>;
 }
 
 export interface ParseIntentRequest {
