@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { Auth0Provider } from "@auth0/nextjs-auth0";
-import { auth0 } from "@/lib/auth0";
+import { getOptionalSession } from "@/lib/auth0";
 import { cn } from "@/lib/utils";
 
 const inter = Inter({
@@ -30,7 +30,7 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
   // Seeds the client-side `useUser()` hook so it renders without a round trip.
-  const session = await auth0.getSession();
+  const session = await getOptionalSession();
 
   return (
     <html

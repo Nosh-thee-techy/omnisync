@@ -59,3 +59,19 @@ export const auth0 = new Auth0Client({
     inactivityDuration: SESSION_INACTIVITY_DURATION_SECONDS,
   },
 });
+
+/**
+ * Session lookup that tolerates a deployment with no tenant configuration.
+ *
+ * Calling into the SDK without AUTH0_DOMAIN throws DomainResolutionError, which
+ * would turn every page into a 500. CI and the Playwright e2e run build and
+ * boot the app with no Auth0 tenant, so public pages have to survive it. Routes
+ * that actually require a session fail closed in the proxy instead.
+ */
+export async function getOptionalSession() {
+  if (!isAuth0Configured) {
+    return null;
+  }
+
+  return auth0.getSession();
+}
