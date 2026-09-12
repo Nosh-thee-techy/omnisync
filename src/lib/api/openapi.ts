@@ -1,0 +1,30 @@
+export const openApiDocument = {
+  openapi: "3.1.1",
+  info: { title: "OmniPulse Mock API", version: "0.1.0", description: "In-memory frontend integration gateway. State resets when the Next.js process restarts." },
+  servers: [{ url: "/" }],
+  tags: [{ name: "Auth" }, { name: "Meetings" }, { name: "Actions" }, { name: "Webhooks" }],
+  paths: {
+    "/api/health": { get: { summary: "Gateway health", responses: { "200": { description: "Gateway is ready" } } } },
+    "/api/auth/login": { post: { tags: ["Auth"], summary: "Create mock session", requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LoginInput" } } } }, responses: { "200": { description: "Session created", content: { "application/json": { schema: { $ref: "#/components/schemas/SessionResponse" } } } }, "422": { $ref: "#/components/responses/ValidationError" } } } },
+    "/api/auth/logout": { post: { tags: ["Auth"], security: [{ mockSession: [] }], responses: { "200": { description: "Session cleared" } } } },
+    "/api/auth/session": { get: { tags: ["Auth"], security: [{ mockSession: [] }], responses: { "200": { description: "Current session", content: { "application/json": { schema: { $ref: "#/components/schemas/SessionResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" } } } },
+    "/api/dashboard": { get: { security: [{ mockSession: [] }], responses: { "200": { description: "Meeting and action summary" }, "401": { $ref: "#/components/responses/Unauthorized" } } } },
+    "/api/meetings": { get: { tags: ["Meetings"], security: [{ mockSession: [] }], responses: { "200": { description: "Meeting collection" } } }, post: { tags: ["Meetings"], security: [{ mockSession: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/MeetingInput" } } } }, responses: { "201": { description: "Meeting created" }, "422": { $ref: "#/components/responses/ValidationError" } } } },
+    "/api/meetings/{meetingId}": { parameters: [{ name: "meetingId", in: "path", required: true, schema: { type: "string" } }], get: { tags: ["Meetings"], security: [{ mockSession: [] }], responses: { "200": { description: "Meeting" }, "404": { $ref: "#/components/responses/NotFound" } } }, patch: { tags: ["Meetings"], security: [{ mockSession: [] }], responses: { "200": { description: "Meeting updated" } } }, delete: { tags: ["Meetings"], security: [{ mockSession: [] }], responses: { "200": { description: "Meeting deleted" } } } },
+    "/api/meetings/{meetingId}/actions": { get: { tags: ["Actions"], security: [{ mockSession: [] }], responses: { "200": { description: "Meeting action collection" } } }, post: { tags: ["Actions"], security: [{ mockSession: [] }], responses: { "201": { description: "Action created" } } } },
+    "/api/actions": { get: { tags: ["Actions"], security: [{ mockSession: [] }], responses: { "200": { description: "Action collection" } } }, post: { tags: ["Actions"], security: [{ mockSession: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ActionInput" } } } }, responses: { "201": { description: "Action created" } } } },
+    "/api/actions/{actionId}": { parameters: [{ name: "actionId", in: "path", required: true, schema: { type: "string" } }], get: { tags: ["Actions"], security: [{ mockSession: [] }], responses: { "200": { description: "Action" } } }, patch: { tags: ["Actions"], security: [{ mockSession: [] }], responses: { "200": { description: "Action updated" } } }, delete: { tags: ["Actions"], security: [{ mockSession: [] }], responses: { "200": { description: "Action deleted" } } } },
+    "/api/webhooks/{provider}": { post: { tags: ["Webhooks"], summary: "Receive and route provider event", parameters: [{ name: "provider", in: "path", required: true, schema: { type: "string", enum: ["calendar", "meeting", "transcript", "action"] } }], requestBody: { required: true, content: { "application/json": { schema: { type: "object", additionalProperties: true } } } }, responses: { "202": { description: "Event verified and routed" }, "401": { description: "Invalid webhook signature" } } } },
+  },
+  components: {
+    securitySchemes: { mockSession: { type: "http", scheme: "bearer", bearerFormat: "Mock session token", description: "A signed-in browser may instead use the HttpOnly session cookie." } },
+    schemas: {
+      LoginInput: { type: "object", required: ["email"], properties: { email: { type: "string", format: "email" }, name: { type: "string" } } },
+      MeetingInput: { type: "object", required: ["title", "startsAt"], properties: { title: { type: "string" }, startsAt: { type: "string", format: "date-time" }, status: { type: "string", enum: ["scheduled", "live", "completed", "cancelled"] }, attendees: { type: "array", items: { type: "string" } } } },
+      ActionInput: { type: "object", required: ["title"], properties: { title: { type: "string" }, meetingId: { type: "string" }, status: { type: "string", enum: ["open", "in_progress", "done", "dismissed"] } } },
+      SessionResponse: { type: "object", required: ["data"], properties: { data: { type: "object" } } },
+      ErrorResponse: { type: "object", required: ["error"], properties: { error: { type: "object", required: ["code", "message"] } } },
+    },
+    responses: { Unauthorized: { description: "No valid session", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }, NotFound: { description: "Resource not found" }, ValidationError: { description: "Invalid request", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } } },
+  },
+} as const;
