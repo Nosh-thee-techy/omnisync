@@ -55,6 +55,8 @@ function WorkspaceInner({ showToast }: { showToast: (message: string) => void })
   const connectGoogle = () => {
     const nextProfile = { name: form.name.trim(), workspace: form.workspace.trim(), email: form.email.trim(), meetUrl: form.meetUrl.trim() || undefined };
     window.localStorage.setItem("omnisync-workspace", JSON.stringify(nextProfile));
+    // OAuth requires a full navigation to the auth API route, not client routing.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- API OAuth redirect
     window.location.assign("/api/auth/google");
   };
   const startRegistration = () => {

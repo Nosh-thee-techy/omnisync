@@ -90,8 +90,10 @@ export function WorkspaceActionsProvider({
     return undefined;
   }, []);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (options?: { initial?: boolean }) => {
+    if (!options?.initial) {
+      setLoading(true);
+    }
     try {
       const [actionsResponse, dashboardResponse, activeMeetingId] =
         await Promise.all([
@@ -124,7 +126,7 @@ export function WorkspaceActionsProvider({
   }, [ensureMeeting, meetingId]);
 
   useEffect(() => {
-    void refresh();
+    void refresh({ initial: true });
   }, [refresh]);
 
   const handleIntent = useCallback(
