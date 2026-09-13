@@ -125,9 +125,12 @@ export function WorkspaceActionsProvider({
     }
   }, [ensureMeeting, meetingId]);
 
+  // Mount-time fetch must run in an effect; refresh updates React state from API data.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     void refresh({ initial: true });
   }, [refresh]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleIntent = useCallback(
     async (intent: IntentPayload) => {
