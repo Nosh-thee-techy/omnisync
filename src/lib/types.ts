@@ -41,6 +41,7 @@ export interface ActionItem {
   due: string | null;
   query: string | null;
   status: ActionStatus;
+  actionId: string | null;
   runId: string | null;
   publicAccessToken: string | null;
   result: ActionResult | null;

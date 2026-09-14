@@ -12,6 +12,7 @@ import {
 import type { Message, ToolCall, ToolMessage } from "@copilotkit/react-core/v2";
 import { CheckCircle2, ExternalLink, Loader2, Search, Sparkles, X } from "lucide-react";
 import { useMeeting } from "@/lib/meeting-store";
+import { useWorkspaceActions } from "@/contexts/workspace-actions";
 import type { ActionItem, ActionKind, ActionResult, ActionStatus } from "@/lib/types";
 
 export const EXTRACTOR_AGENT_ID = "extractor";
@@ -37,39 +38,24 @@ type CardProps = {
   respond?: (result: unknown) => Promise<void>;
 };
 
-async function approve(item: Omit<ActionItem, "status" | "runId" | "publicAccessToken" | "result" | "createdAt">) {
-  const response = await fetch("/api/actions/approve", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(item),
-  });
-  const payload = (await response.json()) as {
-    data?: { runId: string; publicAccessToken: string };
-    error?: { message?: string };
-  };
-  if (!response.ok || !payload.data) {
-    throw new Error(payload.error?.message ?? "Approval failed.");
-  }
-  return payload.data;
-}
-
 function useRunPolling(item: ActionItem | undefined, onUpdate: (s: ActionStatus, r: ActionResult | null) => void) {
-  const runId = item?.runId;
+  const actionId = item?.actionId;
   const active = item?.status === "queued" || item?.status === "running";
   useEffect(() => {
-    if (!runId || !active) return;
+    if (!actionId || !active) return;
     const timer = setInterval(async () => {
-      const response = await fetch(`/api/actions/status?runId=${encodeURIComponent(runId)}`);
+      const response = await fetch(`/api/actions/${encodeURIComponent(actionId)}/job`);
       if (!response.ok) return;
       const { data } = (await response.json()) as { data?: { status: ActionStatus; result: ActionResult | null } };
       if (data) onUpdate(data.status, data.result);
     }, 3000);
     return () => clearInterval(timer);
-  }, [runId, active, onUpdate]);
+  }, [actionId, active, onUpdate]);
 }
 
 function ActionCard({ toolCallId, kind, args, status, respond }: CardProps) {
   const { actionItems, addActionItem, setActionStatus, updateActionItem } = useMeeting();
+  const workspace = useWorkspaceActions();
   const item = actionItems.find((a) => a.id === toolCallId);
   // Args stream in while the call is in progress, so edits are stored as
   // overrides and the streamed value is the fallback.
@@ -92,19 +78,30 @@ function ActionCard({ toolCallId, kind, args, status, respond }: CardProps) {
     setBusy(true);
     setError(null);
     try {
+      const finalTitle = title.trim() || args.title || "Untitled";
       const base = {
         id: toolCallId,
         kind,
-        title: title.trim() || args.title || "Untitled",
+        title: finalTitle,
         owner: owner.trim() || null,
         due: due.trim() || null,
-        query: kind === "research" ? args.query ?? title : null,
+        query: kind === "research" ? args.query ?? finalTitle : null,
         sourceQuote: args.sourceQuote ?? null,
       };
-      addActionItem({ ...base, status: "queued", runId: null, publicAccessToken: null, result: null, createdAt: Date.now() });
-      const { runId, publicAccessToken } = await approve(base);
-      updateActionItem(toolCallId, { runId, publicAccessToken });
-      await respond(`approved: ${base.title}`);
+      addActionItem({ ...base, status: "queued", actionId: null, runId: null, publicAccessToken: null, result: null, createdAt: Date.now() });
+
+      const card = await workspace.handleIntent({
+        intent: kind === "research" ? "RESEARCH_QUERY" : "ACTION_ITEM",
+        task: kind === "research" ? undefined : finalTitle,
+        query: kind === "research" ? base.query ?? undefined : undefined,
+        assignee: base.owner ?? undefined,
+        priority: "MEDIUM",
+        timestamp: new Date().toISOString(),
+      });
+      if (!card) throw new Error("Could not save the action.");
+      updateActionItem(toolCallId, { actionId: card.id });
+      await workspace.approve(card);
+      await respond(`approved: ${finalTitle}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Approval failed.");
       setActionStatus(toolCallId, "failed");
@@ -117,7 +114,7 @@ function ActionCard({ toolCallId, kind, args, status, respond }: CardProps) {
     if (!respond) return;
     addActionItem({
       id: toolCallId, kind, title: title || args.title || "", owner: null, due: null, query: null,
-      status: "dismissed", runId: null, publicAccessToken: null, result: null, sourceQuote: null, createdAt: Date.now(),
+      status: "dismissed", actionId: null, runId: null, publicAccessToken: null, result: null, sourceQuote: null, createdAt: Date.now(),
     });
     await respond("dismissed");
   };

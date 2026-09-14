@@ -13,12 +13,14 @@ A companion panel for cross-border meetings. It sits beside Google Meet, Zoom or
 | Per-line language detection and translation | Working | `src/app/api/translate` |
 | Action-item and research extraction | Working | `src/app/api/copilotkit`, `src/lib/copilot-runtime.ts` |
 | Approve / edit / dismiss cards (CopilotKit generative UI) | Working | `src/components/meeting/action-cards.tsx` |
-| Background research via Exa, summarised into a brief | Working | `src/trigger/follow-up.ts` |
-| Live run status back onto the card | Working | `src/app/api/actions/status` |
+| Background research via Exa, summarised into a brief | Working | `src/lib/dispatch-executor.ts`, `src/trigger/research-exa.ts` |
+| Live job status back onto the card | Working | `src/app/api/actions/[actionId]/job` |
 | Scripted sample meeting for demos | Working | `src/lib/sample-transcript.ts` |
-| Meeting persistence (Prisma / Neon) | Schema in place, not yet wired to the live panel | `prisma/schema.prisma`, `src/app/api/meetings` |
+| Action items + follow-up jobs persisted (Prisma / Neon) | Working | `src/contexts/workspace-actions.tsx`, `src/app/api/actions`, `src/lib/dispatch-task.ts` |
+| Overview and Action-items panels on real data | Working | `src/components/workspace/` |
+| Runs locally when Trigger.dev is not configured | Working | `src/lib/dispatch-task.ts` |
 
-Nothing from the live panel is written to disk. The transcript lives in the browser tab and is gone when the tab closes.
+The transcript itself is never written to disk — it lives in the browser tab and is gone when the tab closes. Only action items a person approves are persisted.
 
 ## Architecture
 
@@ -37,16 +39,18 @@ flowchart LR
         TOK["/api/realtime/session<br/>mint 60s ephemeral key"]
         TR["/api/translate<br/>OpenRouter fast tier"]
         CK["/api/copilotkit<br/>Extractor agent · OpenRouter"]
-        AP["/api/actions/approve"]
-        ST["/api/actions/status"]
+        AC["/api/actions<br/>persist ActionItem"]
+        AP["/api/trigger-action<br/>FollowUpJob + dispatch"]
+        ST["/api/actions/:id/job"]
     end
 
-    subgraph TDEV["Trigger.dev"]
-        AA["approve-action"]
-        RS["research · Exa"]
-        IS["create-issue · GitHub"]
-        SL["notify-slack"]
+    subgraph TDEV["Trigger.dev (or in-process fallback)"]
+        RS["research-exa<br/>Exa → brief"]
+        DA["dispatch-action-item<br/>GitHub issue"]
+        SL["Slack webhook"]
     end
+
+    DB[("Prisma / Neon")]
 
     OA["OpenAI Realtime"]
 
@@ -59,17 +63,21 @@ flowchart LR
     PANEL --> TR --> PANEL
     PANEL -->|batched every 8s| CK
     CK -->|tool calls| CARDS
-    CARDS -->|Approve| AP --> AA
-    AA --> RS
-    AA --> IS
-    AA --> SL
-    ST -->|poll| CARDS
-    AA -.->|run state| ST
+    CARDS -->|Approve| AC --> AP
+    AP --> RS
+    AP --> DA
+    RS --> SL
+    DA --> SL
+    AC --> DB
+    AP --> DB
+    RS -.->|output| DB
+    DA -.->|output| DB
+    DB --> ST -->|poll| CARDS
 
     style CARDS fill:#6658e9,color:#fff
     style AP fill:#b45309,color:#fff
     style RS fill:#7c3aed,color:#fff
-    style IS fill:#94a3b8,color:#fff
+    style DA fill:#94a3b8,color:#fff
     style SL fill:#94a3b8,color:#fff
 ```
 
@@ -77,7 +85,7 @@ Three rules hold the design together:
 
 - **Audio never touches the server.** Next only mints a short-lived key; the browser talks to OpenAI directly over WebRTC.
 - **The extractor proposes, it never executes.** The agent can only call `proposeActionItem` or `requestResearch`. A person clicks Approve before anything leaves the meeting.
-- **`/api/actions/approve` is the only path to Trigger.dev.** Every side effect passes through that one gate.
+- **`/api/trigger-action` is the only path to Trigger.dev.** Every side effect passes through that one gate, and every run is recorded as a `FollowUpJob` row first.
 
 ### Live loop
 
@@ -99,26 +107,26 @@ sequenceDiagram
             CK-->>P: proposeActionItem / requestResearch
         end
     end
-    P->>TD: approve → tasks.trigger("approve-action")
-    TD-->>P: run status (polled) → brief / links on the card
+    P->>TD: approve → /api/trigger-action → research-exa | dispatch-action-item
+    TD-->>P: job status (polled from Prisma) → brief / links on the card
 ```
 
 ## Pending integrations
 
-Both tasks exist in `src/trigger/follow-up.ts` and are called by `approve-action`; they throw a clear error until their variables are set.
+Both hooks live in `src/lib/dispatch-executor.ts` and are skipped silently until their variables are set — approvals still complete.
 
 ### GitHub — pending
 - Set `GITHUB_TOKEN` (fine-grained PAT with **Issues: write** on the target repo) and `GITHUB_REPO` (`owner/repo`).
-- `create-issue` posts to `POST /repos/{owner}/{repo}/issues` and returns the issue URL to the card.
+- `dispatch-action-item` then posts to `POST /repos/{owner}/{repo}/issues` and returns the issue URL to the card.
 - Later: replace the PAT with per-user GitHub OAuth so issues are attributed to the approver.
 
 ### Slack — pending
 - Create an **Incoming Webhook** on a Slack app and set `SLACK_WEBHOOK_URL`.
-- `notify-slack` posts the research brief or the new action item with its issue link.
+- Research briefs and new action items (with their issue link) are posted after each dispatch.
 - Later: Slack OAuth + channel picker instead of a single webhook.
 
 ### Jira — not started
-- No task yet. Would mirror `create-issue` against `POST /rest/api/3/issue` with an Atlassian API token, plus `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`.
+- No hook yet. Would mirror the GitHub step against `POST /rest/api/3/issue` with an Atlassian API token, plus `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`.
 
 ## Running it
 
@@ -128,9 +136,9 @@ npm install
 npx prisma generate
 npm run dev                 # http://localhost:3000
 
-# second terminal — required for approvals to run
+# second terminal — optional; without TRIGGER_SECRET_KEY approvals run in-process
 npx trigger.dev@latest login
-npx trigger.dev@latest dev
+npm run trigger:dev
 ```
 
 Then sign in, open `/app`, accept the consent gate, and either **Connect to meeting** (pick a **Chrome Tab** and tick *Share tab audio* — window and screen shares carry no audio on macOS) or **Sample** to replay the scripted meeting. Wear headphones, otherwise your mic re-records the remote side and every line transcribes twice.
