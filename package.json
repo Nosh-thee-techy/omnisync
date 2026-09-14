@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.48",
+    "@ai-sdk/openai": "^3.0.112",
     "@auth0/nextjs-auth0": "^4.29.0",
     "@base-ui/react": "^1.8.0",
     "@copilotkit/react-core": "^1.71.1",

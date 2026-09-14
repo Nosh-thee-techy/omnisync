@@ -1,6 +1,5 @@
 import {
   BuiltInAgent,
-  type BuiltInAgentModel,
   CopilotRuntime,
   createCopilotRuntimeHandler,
 } from "@copilotkit/runtime/v2";
@@ -11,10 +10,7 @@ export const dynamic = "force-dynamic";
 const runtime = new CopilotRuntime({
   agents: {
     extractor: new BuiltInAgent({
-      // CopilotKit's model union still tops out at LanguageModelV3 while the
-      // installed @ai-sdk providers emit V4. Same ai@6 major on both sides, so
-      // this is a stale type rather than a real incompatibility.
-      model: reasoningModel() as unknown as BuiltInAgentModel,
+      model: reasoningModel(),
       prompt: EXTRACTOR_INSTRUCTIONS,
     }),
   },

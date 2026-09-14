@@ -1,4 +1,4 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOpenAI } from "@ai-sdk/openai";
 
 const REASONING_MODEL = process.env.OPENROUTER_REASONING_MODEL ?? "openai/gpt-4o-mini";
 
@@ -24,8 +24,9 @@ export function reasoningModel() {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured");
 
-  const openrouter = createOpenAICompatible({
-    name: "openrouter",
+  // @ai-sdk/openai is what CopilotKit's runtime pins, so its spec version matches the
+  // bundled AI SDK; newer standalone providers emit a version ai@6 rejects.
+  const openrouter = createOpenAI({
     baseURL: "https://openrouter.ai/api/v1",
     apiKey,
     headers: {
@@ -34,5 +35,5 @@ export function reasoningModel() {
     },
   });
 
-  return openrouter(REASONING_MODEL);
+  return openrouter.chat(REASONING_MODEL);
 }
