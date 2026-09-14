@@ -1,14 +1,5 @@
 "use client";
 
-/**
- * In-memory meeting state, held in React for the lifetime of the tab.
- *
- * There is no database and nothing is written to disk. Closing the tab destroys
- * the transcript. This started as a time-saving cut and turned into the
- * strongest privacy claim the product has, so it is load-bearing — do not
- * casually swap it for persistence without revisiting the consent copy.
- */
-
 import {
   createContext,
   useCallback,
@@ -51,7 +42,6 @@ interface MeetingContextValue {
     result?: ActionResult | null,
   ) => void;
 
-  /** Ends capture and destroys every trace of the meeting. */
   purge: () => void;
 }
 
@@ -65,18 +55,14 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
   const [targetLanguage, setTargetLanguage] = useState("en");
   const [consentGiven, setConsentGiven] = useState(false);
 
-  /**
-   * Segment ids already seen. The two Realtime sessions run independently and
-   * can redeliver on reconnect, so inserts must be idempotent.
-   */
+  // The two Realtime sessions run independently and can redeliver on reconnect.
   const seenIds = useRef(new Set<string>());
 
   const addSegment = useCallback((segment: Segment) => {
     if (seenIds.current.has(segment.id)) return;
     seenIds.current.add(segment.id);
 
-    // Interleave the two sources by timestamp rather than appending, otherwise
-    // the transcript reads as two separate monologues.
+    // Interleave by timestamp, or the transcript reads as two monologues.
     setSegments((prev) => {
       const next = [...prev, segment];
       next.sort((a, b) => a.ts - b.ts);

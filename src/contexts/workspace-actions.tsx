@@ -29,7 +29,7 @@ type WorkspaceActionsContextValue = {
   dashboard: DashboardData | null;
   loading: boolean;
   refresh: () => Promise<void>;
-  handleIntent: (intent: IntentPayload) => Promise<void>;
+  handleIntent: (intent: IntentPayload) => Promise<CopilotCard | undefined>;
   createManualAction: (input: {
     title: string;
     assignee?: string;
@@ -90,8 +90,8 @@ export function WorkspaceActionsProvider({
     return undefined;
   }, []);
 
+  // loading starts true; later refreshes run in the background without a spinner.
   const refresh = useCallback(async () => {
-    setLoading(true);
     try {
       const [actionsResponse, dashboardResponse, activeMeetingId] =
         await Promise.all([
@@ -129,10 +129,10 @@ export function WorkspaceActionsProvider({
 
   const handleIntent = useCallback(
     async (intent: IntentPayload) => {
-      if (intent.intent === "NONE") return;
+      if (intent.intent === "NONE") return undefined;
 
       const title = intent.task ?? intent.query;
-      if (!title) return;
+      if (!title) return undefined;
 
       const activeMeetingId = meetingId ?? (await ensureMeeting());
       if (activeMeetingId && !meetingId) setMeetingId(activeMeetingId);
@@ -162,7 +162,7 @@ export function WorkspaceActionsProvider({
             ? payload.error.message
             : "Could not save the detected action.",
         );
-        return;
+        return undefined;
       }
 
       const card: CopilotCard = {
@@ -175,6 +175,7 @@ export function WorkspaceActionsProvider({
       setCards((current) => [card, ...current.filter((c) => c.id !== card.id)]);
       onToast?.("Copilot detected a new action from the conversation.");
       void refresh();
+      return card;
     },
     [ensureMeeting, meetingId, onToast, refresh],
   );

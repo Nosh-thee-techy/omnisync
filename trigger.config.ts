@@ -2,7 +2,7 @@ import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  project: process.env.TRIGGER_PROJECT_REF ?? "proj_omnisync",
+  project: process.env.TRIGGER_PROJECT_REF ?? "proj_xaumckehcvvxiaibuivk",
   runtime: "node",
   logLevel: "log",
   maxDuration: 300,
