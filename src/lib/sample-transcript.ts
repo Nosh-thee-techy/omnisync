@@ -1,19 +1,6 @@
-/**
- * Scripted fallback transcript.
- *
- * This exists so the demo survives a failure in the live capture path. It is
- * replayed on a timer through *the same* `onSegment` callback the Realtime
- * sessions use, so everything downstream — translation, extraction, cards,
- * Trigger.dev — is byte-identical either way.
- *
- * Built up front, deliberately. A fallback written at the moment you need it
- * is not a fallback.
- */
-
 import type { Segment, SpeakerSource } from "./types";
 
 interface ScriptLine {
-  /** Milliseconds after replay start. */
   at: number;
   source: SpeakerSource;
   speakerLabel: string | null;
@@ -21,10 +8,6 @@ interface ScriptLine {
   text: string;
 }
 
-/**
- * A short cross-border planning call. Deliberately contains exactly one clear
- * commitment and one clear research request, so both card types fire.
- */
 const SCRIPT: ScriptLine[] = [
   {
     at: 1_000,
@@ -91,10 +74,6 @@ const SCRIPT: ScriptLine[] = [
   },
 ];
 
-/**
- * Replays the script, invoking `onSegment` at each line's scheduled offset.
- * Returns a stop function that cancels every pending timer.
- */
 export function playSampleTranscript(
   onSegment: (segment: Segment) => void,
 ): () => void {
@@ -116,5 +95,4 @@ export function playSampleTranscript(
   return () => timers.forEach(clearTimeout);
 }
 
-/** Total runtime, so the UI can show replay progress. */
 export const SAMPLE_DURATION_MS = SCRIPT[SCRIPT.length - 1]!.at + 4_000;
