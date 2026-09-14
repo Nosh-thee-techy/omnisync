@@ -1,101 +1,149 @@
-This is OmniPulse, an ambient meeting and action orchestration app. It includes a dependency-free mock API gateway so UI work can progress before a database or identity provider exists.
+# OmniSync
 
-## Mock API gateway
+A companion panel for cross-border meetings. It sits beside Google Meet, Zoom or Teams, transcribes everyone in the call in real time, translates as it goes, and turns spoken commitments into action cards a person can approve. Approved cards run in the background and report back while the call is still going.
 
-The API is stateful only for the running Next.js process. It begins with one scheduled meeting and one open action, is intentionally uncached, and resets after a server restart. Protected endpoints accept either the `omnipulse_mock_session` cookie issued on sign-in or an `Authorization: Bearer <token>` header.
+## What it does today
 
-### Auth0 production authentication
+| Capability | Status | Where |
+|---|---|---|
+| Sign in (Auth0, Google) | Working | `src/app/api/auth`, `src/lib/auth0.ts` |
+| Consent gate before any capture | Working | `src/components/meeting/consent-gate.tsx` |
+| Live transcription of the meeting tab **and** your mic | Working | `src/hooks/useMeetingCapture.ts`, `src/app/api/realtime/session` |
+| Speaker tagging (You / Room) | Working | derived from the audio source |
+| Per-line language detection and translation | Working | `src/app/api/translate` |
+| Action-item and research extraction | Working | `src/app/api/copilotkit`, `src/lib/copilot-runtime.ts` |
+| Approve / edit / dismiss cards (CopilotKit generative UI) | Working | `src/components/meeting/action-cards.tsx` |
+| Background research via Exa, summarised into a brief | Working | `src/trigger/follow-up.ts` |
+| Live run status back onto the card | Working | `src/app/api/actions/status` |
+| Scripted sample meeting for demos | Working | `src/lib/sample-transcript.ts` |
+| Meeting persistence (Prisma / Neon) | Schema in place, not yet wired to the live panel | `prisma/schema.prisma`, `src/app/api/meetings` |
 
-Auth0 is supported through the official `@auth0/nextjs-auth0` SDK. Copy [`.env.example`](.env.example) to `.env.local` and supply the Auth0 credentials from a **Regular Web Application** in your tenant. When all four `AUTH0_*` values are present, the gateway automatically switches from mock sessions to Auth0 sessions:
+Nothing from the live panel is written to disk. The transcript lives in the browser tab and is gone when the tab closes.
 
-- Sign in at `/auth/login` and sign out at `/auth/logout`.
-- Auth0 auto-mounts the callback and session endpoints beneath `/auth/*` through `src/proxy.ts`.
-- Every protected API handler validates the Auth0 session itself; proxy checks are only the fast routing boundary.
-- Configure Auth0 Allowed Callback URLs and Logout URLs for `http://localhost:3001/auth/callback` (or the port you use) and your deployed URL’s equivalent.
+## Architecture
 
-Without the Auth0 environment variables, the documented mock `/api/auth/*` flow remains available exclusively for local UI development. It is automatically disabled once Auth0 is configured.
+```mermaid
+flowchart LR
+    subgraph BROWSER["Browser — /app"]
+        TAB["Meeting tab audio<br/>(remote participants)"]
+        MIC["Microphone<br/>(you)"]
+        RT1["Realtime session · Room"]
+        RT2["Realtime session · You"]
+        PANEL["Transcript panel"]
+        CARDS["Action cards<br/>useHumanInTheLoop"]
+    end
 
-All responses use one of these shapes:
+    subgraph NEXT["Next.js route handlers"]
+        TOK["/api/realtime/session<br/>mint 60s ephemeral key"]
+        TR["/api/translate<br/>OpenRouter fast tier"]
+        CK["/api/copilotkit<br/>Extractor agent · OpenRouter"]
+        AP["/api/actions/approve"]
+        ST["/api/actions/status"]
+    end
 
-```ts
-{ data: T, meta?: Record<string, unknown> }
-{ error: { code: string, message: string, details?: Record<string, string> } }
+    subgraph TDEV["Trigger.dev"]
+        AA["approve-action"]
+        RS["research · Exa"]
+        IS["create-issue · GitHub"]
+        SL["notify-slack"]
+    end
+
+    OA["OpenAI Realtime"]
+
+    TOK -.->|ek_ token| RT1
+    TOK -.->|ek_ token| RT2
+    TAB --> RT1 <-->|WebRTC| OA
+    MIC --> RT2 <-->|WebRTC| OA
+    RT1 --> PANEL
+    RT2 --> PANEL
+    PANEL --> TR --> PANEL
+    PANEL -->|batched every 8s| CK
+    CK -->|tool calls| CARDS
+    CARDS -->|Approve| AP --> AA
+    AA --> RS
+    AA --> IS
+    AA --> SL
+    ST -->|poll| CARDS
+    AA -.->|run state| ST
+
+    style CARDS fill:#6658e9,color:#fff
+    style AP fill:#b45309,color:#fff
+    style RS fill:#7c3aed,color:#fff
+    style IS fill:#94a3b8,color:#fff
+    style SL fill:#94a3b8,color:#fff
 ```
 
-| Endpoint | Methods | Purpose |
-| --- | --- | --- |
-| `/api/health` | GET | Unauthenticated mock-service readiness check |
-| `/api/openapi` | GET | Unauthenticated OpenAPI 3.1.1 contract document |
-| `/api/auth/login` | POST | Create a mock session (`{ email, name? }`) |
-| `/api/auth/logout` | POST | Clear the current mock session |
-| `/api/auth/session` | GET | Retrieve the current session |
-| `/api/dashboard` | GET | Upcoming meetings, open actions, counts |
-| `/api/parse-intent` | POST | Parse `{ transcript, meetingId? }` for an immediate UI card; does not create data |
-| `/api/meetings` | GET, POST | List (`?status=`) or create meetings |
-| `/api/meetings/:meetingId` | GET, PATCH, DELETE | Read, edit, or remove a meeting |
-| `/api/meetings/:meetingId/actions` | GET, POST | List or create a meeting’s actions |
-| `/api/actions` | GET, POST | List (`?status=&meetingId=`) or create actions |
-| `/api/actions/:actionId` | GET, PATCH, DELETE | Read, edit, or remove an action |
-| `/api/webhooks/:provider` | POST | Verify and route an external event (`calendar`, `meeting`, `transcript`, `action`) |
+Three rules hold the design together:
 
-Example sign-in from a client component:
+- **Audio never touches the server.** Next only mints a short-lived key; the browser talks to OpenAI directly over WebRTC.
+- **The extractor proposes, it never executes.** The agent can only call `proposeActionItem` or `requestResearch`. A person clicks Approve before anything leaves the meeting.
+- **`/api/actions/approve` is the only path to Trigger.dev.** Every side effect passes through that one gate.
 
-```ts
-const response = await fetch("/api/auth/login", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email: "alex@example.com", name: "Alex" }),
-});
-const { data: session } = await response.json();
+### Live loop
+
+```mermaid
+sequenceDiagram
+    participant OA as OpenAI Realtime
+    participant P as Panel
+    participant TR as /api/translate
+    participant CK as /api/copilotkit
+    participant TD as Trigger.dev
+
+    loop per spoken line
+        OA-->>P: transcription.completed
+        par
+            P->>TR: text
+            TR-->>P: language + translation
+        and
+            P->>CK: batch (every 8s)
+            CK-->>P: proposeActionItem / requestResearch
+        end
+    end
+    P->>TD: approve → tasks.trigger("approve-action")
+    TD-->>P: run status (polled) → brief / links on the card
 ```
 
-`src/proxy.ts` performs a fast, optimistic check for `/api/*` and `/app/*`; handlers repeat the authorization check so they stay safe if the proxy is bypassed. `/api/health`, `/api/openapi`, and `/api/auth/login` are public. A missing session redirects `/app/*` to `/?next=...` and returns `401` for API calls.
+## Pending integrations
 
-## Webhook gateway
+Both tasks exist in `src/trigger/follow-up.ts` and are called by `approve-action`; they throw a clear error until their variables are set.
 
-Webhook URLs are intentionally exempt from session authentication because they are called by external providers. Instead, configure a per-provider HMAC secret, for example `OMNIPULSE_WEBHOOK_CALENDAR_SECRET`. Send the raw JSON body and an `x-omnipulse-signature: sha256=<hex-hmac>` header. The gateway verifies the signature and routes the acknowledged mock event to meetings or actions.
+### GitHub — pending
+- Set `GITHUB_TOKEN` (fine-grained PAT with **Issues: write** on the target repo) and `GITHUB_REPO` (`owner/repo`).
+- `create-issue` posts to `POST /repos/{owner}/{repo}/issues` and returns the issue URL to the card.
+- Later: replace the PAT with per-user GitHub OAuth so issues are attributed to the approver.
 
-In development, absent secrets are accepted as `verification: "mock"` so frontend integration has no setup dependency. In production, missing secrets return `503`, and invalid signatures return `401`.
+### Slack — pending
+- Create an **Incoming Webhook** on a Slack app and set `SLACK_WEBHOOK_URL`.
+- `notify-slack` posts the research brief or the new action item with its issue link.
+- Later: Slack OAuth + channel picker instead of a single webhook.
 
-### Audio transcript integration
+### Jira — not started
+- No task yet. Would mirror `create-issue` against `POST /rest/api/3/issue` with an Atlassian API token, plus `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`.
 
-`useAudioStream.ts` can send debounced blocks as `{ transcript, meetingId? }` to either route:
-
-- `POST /api/parse-intent` is authenticated and returns a deterministic mock intent suitable for an Eng 4 UI card. It never changes the action store.
-- `POST /api/webhooks/transcript` accepts the same payload, verifies its webhook signature when configured, returns the intent, and creates an open action only when the block is recognized as actionable (for example, “I’ll send the brief”).
-
-## Getting Started
-
-First, run the development server:
+## Running it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env        # fill in keys — each block links to where to get it
+npm install
+npx prisma generate
+npm run dev                 # http://localhost:3000
+
+# second terminal — required for approvals to run
+npx trigger.dev@latest login
+npx trigger.dev@latest dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then sign in, open `/app`, accept the consent gate, and either **Connect to meeting** (pick a **Chrome Tab** and tick *Share tab audio* — window and screen shares carry no audio on macOS) or **Sample** to replay the scripted meeting. Wear headphones, otherwise your mic re-records the remote side and every line transcribes twice.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`OPENAI_TRANSCRIBE_MODEL` defaults to `gpt-4o-transcribe`. Set it to `gpt-4o-transcribe-diarize` if your OpenAI org has access — that adds per-speaker labels inside the Room stream.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scripts
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-#omnisync
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Next dev server |
+| `npm run build` | Production build |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint |
+| `npm run db:migrate` / `db:push` / `db:studio` | Prisma |
+| `npm run test:e2e` | Playwright |
