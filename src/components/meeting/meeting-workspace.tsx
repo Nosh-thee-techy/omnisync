@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { CopilotKitProvider, useAgent } from "@copilotkit/react-core/v2";
 import { MeetingProvider, useMeeting } from "@/lib/meeting-store";
 import { useMeetingCapture } from "@/hooks/useMeetingCapture";
@@ -103,8 +103,13 @@ function Workspace() {
 }
 
 export function MeetingWorkspace() {
+  // The v2 client parses this with new URL() and no base, so it must be absolute.
+  const runtimeUrl = useMemo(
+    () => (typeof window === "undefined" ? "/api/copilotkit" : `${window.location.origin}/api/copilotkit`),
+    [],
+  );
   return (
-    <CopilotKitProvider runtimeUrl="/api/copilotkit">
+    <CopilotKitProvider runtimeUrl={runtimeUrl} useSingleEndpoint>
       <MeetingProvider>
         <Workspace />
       </MeetingProvider>
